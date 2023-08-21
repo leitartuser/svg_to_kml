@@ -21,8 +21,10 @@ def get_rectangles(svg_doc):
     polygons = []
     for irect, rect in enumerate(svg_doc.getElementsByTagName('rect')):
         # if irect > 0:
-        x0 = int(rect.getAttribute('x'))
-        y0 = int(rect.getAttribute('y'))
+        # x0 = int(rect.getAttribute('x'))
+        # y0 = int(rect.getAttribute('y'))
+        x0 = float(rect.getAttribute('x'))
+        y0 = float(rect.getAttribute('y'))
         width = float(rect.getAttribute('width'))
         height = float(rect.getAttribute('height'))
         polygon = Polygon([(x0, y0),
@@ -130,10 +132,10 @@ def get_working_dir():
 def get_pixels(svg_doc):
     width = float(0)
     height = float(0)
-    for irect, rect in enumerate(svg_doc.getElementsByTagName('rect')):
-        if irect == 0:
-            width = float(rect.getAttribute('width'))
-            height = float(rect.getAttribute('height'))
+    for isvg, svg in enumerate(svg_doc.getElementsByTagName('svg')):
+        if isvg == 0:
+            width = float(svg.getAttribute('width'))
+            height = float(svg.getAttribute('height'))
     return width, height
 
 

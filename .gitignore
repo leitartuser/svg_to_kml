@@ -154,3 +154,10 @@ cython_debug/
 #input output
 input/
 output/
+
+
+#pictures
+.png
+.svg
+*.png
+*.svg
