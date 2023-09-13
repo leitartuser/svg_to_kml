@@ -6,6 +6,7 @@ from shapely.geometry import Polygon
 from svgpathtools import Path
 import geopandas as gpd
 from operator import itemgetter
+from kmlfaster import create_kml
 
 
 def find_svg():
@@ -33,6 +34,19 @@ def get_rectangles(svg_doc):
                            (x0, y0 + height)
                            ])
         polygons.append(polygon)
+    # for isvg, svg in enumerate(svg_doc.getElementsByTagName('svg')):
+    #     if isvg == 0:
+    #         width = float(svg.getAttribute('width'))
+    #         height = float(svg.getAttribute('height'))
+    #         polygon = Polygon([(x0, y0),
+    #                            (x0 + width, y0),
+    #                            (x0 + width, y0 + height),
+    #                            (x0, y0 + height)
+    #                            ])
+    #         print("this is the biggest polygon")
+    #         print(polygon)
+    #         polygons.append(polygon)
+
     return polygons
 
 
@@ -41,6 +55,8 @@ def get_paths(svg_doc):
     for ipath, path in enumerate(svg_doc.getElementsByTagName('path')):
         print('Path', ipath)
         d = path.getAttribute('d')
+        id = path.getAttribute('id')
+        print(id)
         parsed = parse_path(d)
         print('Objects:\n', parsed, '\n' + '-' * 20)
         circle_path = []
@@ -91,6 +107,7 @@ def determine_min(shape):
     min_x, min_y, max_x, max_y = min(bounds, key=itemgetter(0))[0], min(bounds, key=itemgetter(1))[1], \
                                  max(bounds, key=itemgetter(2))[2], max(bounds, key=itemgetter(3))[
                                  3]
+    print('This is the min tupel')
     print(min_x, min_y, max_x, max_y)
     return min_x, min_y, max_x, max_y
 
@@ -155,8 +172,48 @@ Let Höhe;
     return script_string
 
 
+def make_new_qlik_script():
+    script_string = f""""
+
+
+modified_1:
+Load
+	Name,
+	Subfield(Area, '],[')								as all_coordinates
+Resident [doc name/name2];
+
+modified_2:
+Load
+	Name,
+    PurgeChar(Subfield(all_coordinates, ',', 1), '[')	as x_Wert,
+    PurgeChar(Subfield(all_coordinates, ',', 2), ']')	as y_Wert
+Resident modified_1;
+
+max_min_table:
+Load
+	max(replaced_x_Wert)								as max_x_Wert,
+    max(replaced_y_Wert)								as max_y_Wert,
+    min(replaced_x_Wert)								as min_x_Wert,
+    min(replaced_y_Wert)								as min_y_Wert;
+Load
+	Replace(x_Wert, '.', ',')							as replaced_x_Wert,
+    Replace(y_Wert, '.', ',')							as replaced_y_Wert
+Resident modified_2;
+
+Drop Table modified_1;
+
+
+Let Oben_Breite = Peek('max_y_Wert', 0, 'max_min_table');
+Let Links_Laenge = Peek('min_x_Wert', 0, 'max_min_table');
+Let Unten_Breite = Peek('min_y_Wert', 0, 'max_min_table');
+Let Rechts_Laenge = Peek('max_x_Wert', 0, 'max_min_table');
+
+"""
+    return script_string
+
+
 """define factor"""
-fac = 100
+fac = 1
 
 cwd = get_working_dir()
 os.environ['PROJ_LIB'] = f"{cwd}\\venv\\Lib\\site-packages\\pyproj\\proj_dir\\share\\proj"
@@ -176,12 +233,19 @@ for each in all_svgs:
     poly = attach_paths_to_polygon(added_path, poly)
     resized_poly = resize_polygons(poly, fac)
     minx, miny, maxx, maxy = determine_min(resized_poly)
-    new_polygons = shift_to_root(resized_poly, minx, maxy)
-    insert_qlik_string = make_qlik_script(pixels_width, pixels_height, fac)
+    # new_polygons = shift_to_root(resized_poly, minx, maxy)
+    new_polygons = resized_poly
+    print(new_polygons)
+    # insert_qlik_string = make_qlik_script(pixels_width, pixels_height, fac)
+    insert_qlik_string = make_new_qlik_script()
     print(insert_qlik_string)
-    panda = gpd.GeoDataFrame(columns=['id', 'meta_x', 'meta_y'], geometry=[*new_polygons])
-    panda.to_file(f'.\\output{output_file_name}.kml', driver='LIBKML')
+    # panda = gpd.GeoDataFrame(columns=['id', 'meta_x', 'meta_y'], geometry=[*new_polygons])
+    # panda.to_file(f'.\\output{output_file_name}.kml', driver='LIBKML')
     # panda.to_file(f'.\\output{output_file_name}.geojson', driver="GeoJSON")
+    kml, kml_string = create_kml(new_polygons)
+    # print(kml_string)
 
+    with open(f'./output/{output_file_name}.kml', 'w') as f:
+        f.write(kml_string)
 
 show_coords(new_polygons, fac)
