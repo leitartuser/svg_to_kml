@@ -7,6 +7,7 @@ from svgpathtools import Path
 import geopandas as gpd
 from operator import itemgetter
 from kmlfaster import create_kml
+from kmlfaster import new_create_kml
 
 
 def find_svg():
@@ -19,6 +20,7 @@ def find_svg():
 
 
 def get_rectangles(svg_doc):
+    polygon_with_id = []
     polygons = []
     for irect, rect in enumerate(svg_doc.getElementsByTagName('rect')):
         # if irect > 0:
@@ -26,6 +28,7 @@ def get_rectangles(svg_doc):
         # y0 = int(rect.getAttribute('y'))
         x0 = float(rect.getAttribute('x'))
         y0 = float(rect.getAttribute('y'))
+        id = rect.getAttribute('id')
         width = float(rect.getAttribute('width'))
         height = float(rect.getAttribute('height'))
         polygon = Polygon([(x0, y0),
@@ -34,6 +37,7 @@ def get_rectangles(svg_doc):
                            (x0, y0 + height)
                            ])
         polygons.append(polygon)
+        polygon_with_id.append({"id": id, "geometries": polygon})
     # for isvg, svg in enumerate(svg_doc.getElementsByTagName('svg')):
     #     if isvg == 0:
     #         width = float(svg.getAttribute('width'))
@@ -47,10 +51,11 @@ def get_rectangles(svg_doc):
     #         print(polygon)
     #         polygons.append(polygon)
 
-    return polygons
+    return polygons, polygon_with_id
 
 
 def get_paths(svg_doc):
+    new_whole_path = []
     whole_path = []
     for ipath, path in enumerate(svg_doc.getElementsByTagName('path')):
         print('Path', ipath)
@@ -69,7 +74,8 @@ def get_paths(svg_doc):
                     if bezier is not None:
                         circle_path.append(bezier)
         whole_path.append(circle_path)
-    return whole_path
+        new_whole_path.append({"id": id, "geometries": circle_path})
+    return whole_path, new_whole_path
 
 
 def attach_paths_to_polygon(whole_path, polygons):
@@ -88,10 +94,41 @@ def attach_paths_to_polygon(whole_path, polygons):
     return polygons
 
 
+def new_attach_paths_to_polygon(whole_path, polygons):
+    all_geometries = []
+    for each_path in whole_path:
+        circle = []
+        for complex_num in each_path['geometries']:
+            imaginary = complex_num.imag
+            real = complex_num.real
+            point = [float(real), float(imaginary)]
+            circle.append(point)
+        try:
+            polygono = Polygon(circle)
+            polygons.append({"id": each_path['id'], "geometries": polygono})
+            all_geometries.append({"id": each_path['id'], "geometries": polygono})
+        except:
+            print("An exception occurred")
+    return polygons
+
+
 def show_coords(polygons, factor):
     for polygon in polygons:
         # print(polygon)
         x, y = polygon.exterior.xy
+        x_float = [float(line) for line in x]
+        y_float = [float(line) for line in y]
+        plt.plot(x_float, y_float, c="black", linewidth=0.5)
+    plt.xlim([0, 4 * 1000 / factor])
+    plt.ylim([-4 * 1000 / factor, 0])
+
+    return plt.show()
+
+
+def new_show_coords(polygons, factor):
+    for polygon in polygons:
+        # print(polygon)
+        x, y = polygon['geometries'].exterior.xy
         x_float = [float(line) for line in x]
         y_float = [float(line) for line in y]
         plt.plot(x_float, y_float, c="black", linewidth=0.5)
@@ -112,30 +149,45 @@ def determine_min(shape):
     return min_x, min_y, max_x, max_y
 
 
+def new_determine_min(shape):
+    test_list = []
+    for each in shape:
+        print(each['geometries'])
+        test_list.append(each['geometries'])
+    gpdf = gpd.GeoDataFrame(columns=['id', 'distance', 'feature'], geometry=[*test_list])
+    bounds = gpdf.geometry.apply(lambda x: x.bounds).tolist()
+    min_x, min_y, max_x, max_y = min(bounds, key=itemgetter(0))[0], min(bounds, key=itemgetter(1))[1], \
+                                 max(bounds, key=itemgetter(2))[2], max(bounds, key=itemgetter(3))[
+                                 3]
+    print('This is the min tupel')
+    print(min_x, min_y, max_x, max_y)
+    return min_x, min_y, max_x, max_y
+
+
 def shift_to_root(shape, diff_x, diff_y):
     all_geometries = []
     for i, polygons in enumerate(shape):
-        xx, yy = polygons.exterior.coords.xy
+        xx, yy = polygons['geometries'].exterior.coords.xy
         x = xx.tolist()
         new_x = [each_x - diff_x for each_x in x]
         y = yy.tolist()
         new_y = [each_y - diff_y for each_y in y]
         poly = Polygon(zip(new_x, new_y))
-        all_geometries.append(poly)
+        all_geometries.append({"id": polygons['id'], "geometries": poly})
     print(all_geometries)
     return all_geometries
 
 
-def resize_polygons(list_of_poly, factor):
+def new_resize_polygons(list_of_poly, factor):
     all_geometries = []
     for i, polygons in enumerate(list_of_poly):
-        xx, yy = polygons.exterior.coords.xy
+        xx, yy = polygons['geometries'].exterior.coords.xy
         x = xx.tolist()
         new_x = [each_x / factor for each_x in x]
         y = yy.tolist()
         new_y = [each_y / - factor for each_y in y]
         poly = Polygon(zip(new_x, new_y))
-        all_geometries.append(poly)
+        all_geometries.append({"id": polygons['id'], "geometries": poly})
     print(all_geometries)
     return all_geometries
 
@@ -226,26 +278,30 @@ fiona.drvsupport.supported_drivers['LIBKML'] = 'rw'
 for each in all_svgs:
     output_file_name = each[6:len(each)-4]
     doc = minidom.parse(f'.{each}')
-    poly = get_rectangles(doc)
-    added_path = get_paths(doc)
+    poly, polygon_with_id = get_rectangles(doc)
+    added_path, new_added_path = get_paths(doc)
     pixels_width, pixels_height = get_pixels(doc)
     doc.unlink()
     poly = attach_paths_to_polygon(added_path, poly)
-    resized_poly = resize_polygons(poly, fac)
-    minx, miny, maxx, maxy = determine_min(resized_poly)
-    # new_polygons = shift_to_root(resized_poly, minx, maxy)
-    new_polygons = resized_poly
-    print(new_polygons)
+    new_poly = new_attach_paths_to_polygon(new_added_path, polygon_with_id)
+    # resized_poly = resize_polygons(poly, fac)
+    resized_poly = new_resize_polygons(new_poly, fac)
+    # minx, miny, maxx, maxy = determine_min(resized_poly)
+    minx, miny, maxx, maxy = new_determine_min(resized_poly)
+    new_polygons = shift_to_root(resized_poly, minx, maxy)
+    # new_polygons = resized_poly
     # insert_qlik_string = make_qlik_script(pixels_width, pixels_height, fac)
     insert_qlik_string = make_new_qlik_script()
     print(insert_qlik_string)
     # panda = gpd.GeoDataFrame(columns=['id', 'meta_x', 'meta_y'], geometry=[*new_polygons])
     # panda.to_file(f'.\\output{output_file_name}.kml', driver='LIBKML')
     # panda.to_file(f'.\\output{output_file_name}.geojson', driver="GeoJSON")
-    kml, kml_string = create_kml(new_polygons)
+    # kml, kml_string = create_kml(new_polygons)
+    print(new_polygons)
+    kml, kml_string = new_create_kml(new_polygons)
     # print(kml_string)
 
     with open(f'./output/{output_file_name}.kml', 'w') as f:
         f.write(kml_string)
 
-show_coords(new_polygons, fac)
+new_show_coords(new_polygons, fac)
