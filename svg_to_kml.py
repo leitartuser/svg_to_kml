@@ -162,7 +162,7 @@ Let Höhe;
 
 
 def make_new_qlik_script():
-    script_string = f""""
+    script_string = f"""
 modified_1:
 Load
 	Name,
