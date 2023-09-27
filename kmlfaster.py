@@ -8,7 +8,7 @@ def create_kml(list_of_polygons):
     ns = '{http://www.opengis.net/kml/2.2}'
 
     # Create a KML Document and add it to the KML root object
-    d = kml.Document(ns, 'docid', 'doc name', 'doc description')
+    d = kml.Document(ns, 'doc1', 'doc name', 'doc description')
     k.append(d)
 
     # Create a KML Folder and add it to the Document

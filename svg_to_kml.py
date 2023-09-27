@@ -24,7 +24,7 @@ def get_rectangles(svg_doc):
     for irect, rect in enumerate(svg_doc.getElementsByTagName('rect')):
         x0 = float(rect.getAttribute('x'))
         y0 = float(rect.getAttribute('y'))
-        id = rect.getAttribute('id')
+        id_ = rect.getAttribute('id')
         width = float(rect.getAttribute('width'))
         height = float(rect.getAttribute('height'))
         polygon = Polygon([(x0, y0),
@@ -32,7 +32,7 @@ def get_rectangles(svg_doc):
                            (x0 + width, y0 + height),
                            (x0, y0 + height)
                            ])
-        polygon_with_id.append({"id": id, "geometries": polygon})
+        polygon_with_id.append({"id": id_, "geometries": polygon})
     return polygon_with_id
 
 
@@ -42,18 +42,30 @@ def get_circles(svg_doc):
         x0 = float(circle.getAttribute('cx'))
         y0 = float(circle.getAttribute('cy'))
         r = float(circle.getAttribute('r'))
-        id = circle.getAttribute('id')
+        id_ = circle.getAttribute('id')
+        transform = circle.getAttribute('transform')
+        x_factor = 1
+        y_factor = 1
+        if len(transform) > 0:
+            whitelist_char = set('abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ')
+            method = ''.join(filter(whitelist_char.__contains__, transform))
+            if method == 'scale':
+                whitelist_num = set('0123456789,.-')
+                factors = ''.join(filter(whitelist_num.__contains__, transform))
+                x_factor = float(factors[:factors.find(",")])
+                y_factor = float(factors[factors.find(",") + 1:])
+
         # The lower this value the higher quality the circle is with more points generated
-        stepSize = 0.1
+        stepsize = 0.1
 
         # Generated vertices
         positions = []
 
-        t = 0
-        while t < 2 * math.pi:
-            positions.append((r * math.cos(t) + x0, r * math.sin(t) + y0))
-            t += stepSize
-        polygon_with_id.append({"id": id, "geometries": Polygon(positions)})
+        t_ = 0
+        while t_ < 2 * math.pi:
+            positions.append(((r * math.cos(t_) + x0)*x_factor, (r * math.sin(t_) + y0)*y_factor))
+            t_ += stepsize
+        polygon_with_id.append({"id": id_, "geometries": Polygon(positions)})
     return polygon_with_id
 
 
@@ -62,8 +74,7 @@ def get_paths(svg_doc):
     for ipath, path in enumerate(svg_doc.getElementsByTagName('path')):
         print('Path', ipath)
         d = path.getAttribute('d')
-        id = path.getAttribute('id')
-        print(id)
+        id_ = path.getAttribute('id')
         parsed = parse_path(d)
         print('Objects:\n', parsed, '\n' + '-' * 20)
         circle_path = []
@@ -75,7 +86,7 @@ def get_paths(svg_doc):
                     bezier = (bezier_path.point(i / (num_samples - 1)))
                     if bezier is not None:
                         circle_path.append(bezier)
-        all_paths.append({"id": id, "geometries": circle_path})
+        all_paths.append({"id": id_, "geometries": circle_path})
     return all_paths
 
 
@@ -98,8 +109,8 @@ def attach_paths_to_polygon(whole_path, polygons):
 
 
 def attach_circles_to_polygon(circle_shape, polygons):
-    for each in circle_shape:
-        polygons.append(each)
+    for cirlce in circle_shape:
+        polygons.append(cirlce)
     return polygons
 
 
@@ -114,11 +125,11 @@ def show_coords(polygons, factor):
     return plt.show()
 
 
-def determine_min(shape):
-    test_list = []
-    for each in shape:
-        test_list.append(each['geometries'])
-    gpdf = gpd.GeoDataFrame(columns=['id', 'distance', 'feature'], geometry=[*test_list])
+def determine_min(shapes):
+    shapelist = []
+    for shape in shapes:
+        shapelist.append(shape['geometries'])
+    gpdf = gpd.GeoDataFrame(columns=['id', 'distance', 'feature'], geometry=[*shapelist])
     bounds = gpdf.geometry.apply(lambda x: x.bounds).tolist()
     min_x, min_y, max_x, max_y = min(bounds, key=itemgetter(0))[0], min(bounds, key=itemgetter(1))[1], \
                                  max(bounds, key=itemgetter(2))[2], max(bounds, key=itemgetter(3))[
@@ -191,45 +202,22 @@ Let Höhe;
     return script_string
 
 
-def make_new_qlik_script():
+def make_new_qlik_script(min_x, min_y, max_x, max_y, file_name):
     script_string = f"""
-modified_1:
-Load
-	Name,
-	Subfield(Area, '],[')								as all_coordinates
-Resident [doc name/name2];
-
-modified_2:
-Load
-	Name,
-    PurgeChar(Subfield(all_coordinates, ',', 1), '[')	as x_Wert,
-    PurgeChar(Subfield(all_coordinates, ',', 2), ']')	as y_Wert
-Resident modified_1;
-
-max_min_table:
-Load
-	max(replaced_x_Wert)								as max_x_Wert,
-    max(replaced_y_Wert)								as max_y_Wert,
-    min(replaced_x_Wert)								as min_x_Wert,
-    min(replaced_y_Wert)								as min_y_Wert;
-Load
-	Replace(x_Wert, '.', ',')							as replaced_x_Wert,
-    Replace(y_Wert, '.', ',')							as replaced_y_Wert
-Resident modified_2;
-
-Drop Table modified_1;
+    
+Let {file_name}_Oben_Breite = {round(min_y, 5)};
+Let {file_name}_Links_Laenge = {round(min_x, 5)};
+Let {file_name}_Unten_Breite = {round(max_y, 5)};
+Let {file_name}_Rechts_Laenge = {round(max_x, 5)};
 
 
-Let Oben_Breite = Peek('max_y_Wert', 0, 'max_min_table');
-Let Links_Laenge = Peek('min_x_Wert', 0, 'max_min_table');
-Let Unten_Breite = Peek('min_y_Wert', 0, 'max_min_table');
-Let Rechts_Laenge = Peek('max_x_Wert', 0, 'max_min_table');
 """
+
     return script_string
 
 
 """define factor"""
-fac = 1
+devision_factor = 1
 
 cwd = get_working_dir()
 os.environ['PROJ_LIB'] = f"{cwd}\\venv\\Lib\\site-packages\\pyproj\\proj_dir\\share\\proj"
@@ -239,8 +227,10 @@ all_svgs = find_svg()
 
 fiona.drvsupport.supported_drivers['LIBKML'] = 'rw'
 
+insert_string = []
+
 for each in all_svgs:
-    output_file_name = each[6:len(each)-4]
+    output_file_name = each[7:len(each)-4]
     doc = minidom.parse(f'.{each}')
     rectangles_with_id = get_rectangles(doc)
     circles_with_id = get_circles(doc)
@@ -250,19 +240,20 @@ for each in all_svgs:
     polygon1 = attach_paths_to_polygon(paths_with_id, rectangles_with_id)
     polygon2 = attach_circles_to_polygon(circles_with_id, polygon1)
     # print(newer_poly)
-    resized_poly = resize_polygons(polygon2, fac)
+    resized_poly = resize_polygons(polygon2, devision_factor)
     minx, miny, maxx, maxy = determine_min(resized_poly)
     # new_polygons = shift_to_root(resized_poly, minx, maxy)
     # print(new_polygons)
     new_polygons = resized_poly
     # insert_qlik_string = make_qlik_script(pixels_width, pixels_height, fac)
-    insert_qlik_string = make_new_qlik_script()
+    insert_qlik_string = make_new_qlik_script(minx, miny, maxx, maxy, output_file_name)
+    insert_string.append(insert_qlik_string)
     print(insert_qlik_string)
 
-    polygons_geometries = []
-    polygons_ids = []
-    for each in new_polygons:
-        polygons_geometries.append(each['geometries'])
+    # polygons_geometries = []
+    # polygons_ids = []
+    # for each in new_polygons:
+    #     polygons_geometries.append(each['geometries'])
 
     # panda = gpd.GeoDataFrame(columns=['id', 'meta_x', 'meta_y'], geometry=[*polygons_geometries])
     # panda.to_file(f'.\\output{output_file_name}.kml', driver='LIBKML')
@@ -271,4 +262,11 @@ for each in all_svgs:
     with open(f'./output/{output_file_name}.kml', 'w') as f:
         f.write(kml_string)
 
-show_coords(new_polygons, fac)
+
+with open(f'./output/alle_insert_scripts.txt', 'w') as t:
+    for every in insert_string:
+        t.write(every)
+        t.write("\n")
+
+
+show_coords(new_polygons, devision_factor)
