@@ -19,12 +19,32 @@ def find_svg():
     return svg_strings
 
 
+# def get_rectangles(svg_doc):
+#     polygon_with_id = []
+#     for irect, rect in enumerate(svg_doc.getElementsByTagName('rect')):
+#         x0 = float(rect.getAttribute('x'))
+#         y0 = float(rect.getAttribute('y'))
+#         id_ = rect.getAttribute('id')
+#         width = float(rect.getAttribute('width'))
+#         height = float(rect.getAttribute('height'))
+#         polygon = Polygon([(x0, y0),
+#                            (x0 + width, y0),
+#                            (x0 + width, y0 + height),
+#                            (x0, y0 + height)
+#                            ])
+#         polygon_with_id.append({"id": id_, "geometries": polygon})
+#     return polygon_with_id
+
+
 def get_rectangles(svg_doc):
     polygon_with_id = []
     for irect, rect in enumerate(svg_doc.getElementsByTagName('rect')):
         x0 = float(rect.getAttribute('x'))
         y0 = float(rect.getAttribute('y'))
         id_ = rect.getAttribute('id')
+        rx = rect.getAttribute('rx')
+        if len(rx) > 0:
+            print("rx")
         width = float(rect.getAttribute('width'))
         height = float(rect.getAttribute('height'))
         polygon = Polygon([(x0, y0),
@@ -37,7 +57,9 @@ def get_rectangles(svg_doc):
 
 
 def get_circles(svg_doc):
+    a = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ',', '.']
     polygon_with_id = []
+    stepsize = 0.1
     for icircle, circle in enumerate(svg_doc.getElementsByTagName('circle')):
         x0 = float(circle.getAttribute('cx'))
         y0 = float(circle.getAttribute('cy'))
@@ -54,27 +76,46 @@ def get_circles(svg_doc):
                 factors = ''.join(filter(whitelist_num.__contains__, transform))
                 x_factor = float(factors[:factors.find(",")])
                 y_factor = float(factors[factors.find(",") + 1:])
+                # The lower this value the higher quality the circle is with more points generated
 
-        # The lower this value the higher quality the circle is with more points generated
-        stepsize = 0.1
+                # Generated vertices
+                positions = []
 
-        # Generated vertices
-        positions = []
-
-        t_ = 0
-        while t_ < 2 * math.pi:
-            positions.append(((r * math.cos(t_) + x0)*x_factor, (r * math.sin(t_) + y0)*y_factor))
-            t_ += stepsize
-        polygon_with_id.append({"id": id_, "geometries": Polygon(positions)})
+                t_ = 0
+                while t_ < 2 * math.pi:
+                    positions.append(((r * math.cos(t_) + x0) * x_factor, (r * math.sin(t_) + y0) * y_factor))
+                    t_ += stepsize
+                polygon_with_id.append({"id": id_, "geometries": Polygon(positions)})
+            elif method == 'translate':
+                t_ = 0
+                positions = []
+                translate = ''.join([s for s in transform if s in a])
+                print(translate)
+                translate_x, translate_y = float(translate.split(',')[0]), float(translate.split(',')[1])
+                while t_ < 2 * math.pi:
+                    positions.append(((r * math.cos(t_) + x0) + translate_x, (r * math.sin(t_) + y0) + translate_y))
+                    t_ += stepsize
+                polygon_with_id.append({"id": id_, "geometries": Polygon(positions)})
     return polygon_with_id
 
 
 def get_paths(svg_doc):
+    a = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ',', '.']
     all_paths = []
     for ipath, path in enumerate(svg_doc.getElementsByTagName('path')):
         print('Path', ipath)
         d = path.getAttribute('d')
+        # print('this is d!')
+        # print(d)
+        # print(type(d))
         id_ = path.getAttribute('id')
+        transform_ = path.getAttribute('transform')
+        translate_x = 0
+        translate_y = 0
+        if transform_.startswith("translate"):
+            translate = ''.join([s for s in transform_ if s in a])
+            print(translate)
+            translate_x, translate_y = float(translate.split(',')[0]), float(translate.split(',')[1])
         parsed = parse_path(d)
         print('Objects:\n', parsed, '\n' + '-' * 20)
         circle_path = []
@@ -83,20 +124,44 @@ def get_paths(svg_doc):
             num_samples = 10
             for i in range(num_samples):
                 if i > 0:
-                    bezier = (bezier_path.point(i / (num_samples - 1)))
+                    bezier = (bezier_path.point(i / (num_samples - 1)))    # needs svgpathtools 1.5.1
                     if bezier is not None:
                         circle_path.append(bezier)
-        all_paths.append({"id": id_, "geometries": circle_path})
+        print("This is circle_path")
+        print(circle_path)
+        all_paths.append({"id": id_, "geometries": circle_path, "translate_x": translate_x, "translate_y": translate_y})
     return all_paths
+
+
+# def attach_paths_to_polygon(whole_path, polygons):
+#     # all_geometries = []
+#     for each_path in whole_path:
+#         circle = []
+#         for complex_num in each_path['geometries']:
+#             imaginary = complex_num.imag
+#             real = complex_num.real
+#             point = [float(real), float(imaginary)]
+#             circle.append(point)
+#         try:
+#             polygono = Polygon(circle)
+#             polygons.append({"id": each_path['id'], "geometries": polygono})
+#             # all_geometries.append({"id": each_path['id'], "geometries": polygono})
+#         except:
+#             print("An exception occurred")
+#     return polygons
 
 
 def attach_paths_to_polygon(whole_path, polygons):
     # all_geometries = []
+    print("This is whole path!")
+    print(whole_path)
     for each_path in whole_path:
+        translate_x = each_path['translate_x']
+        translate_y = each_path['translate_y']
         circle = []
         for complex_num in each_path['geometries']:
-            imaginary = complex_num.imag
-            real = complex_num.real
+            imaginary = complex_num.imag + translate_y
+            real = complex_num.real + translate_x
             point = [float(real), float(imaginary)]
             circle.append(point)
         try:
@@ -175,14 +240,19 @@ def get_working_dir():
 
 
 def get_pixels(svg_doc):
+    a = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
     width = float(0)
     height = float(0)
     for isvg, svg in enumerate(svg_doc.getElementsByTagName('svg')):
         if isvg == 0:
-            raw_width = svg.getAttribute('width').replace('mm', '')
-            raw_height = svg.getAttribute('height').replace('mm', '')
-            width = float(raw_width)
-            height = float(raw_height)
+            # raw_width = svg.getAttribute('width').replace('mm', '')
+            # raw_height = svg.getAttribute('height').replace('mm', '')
+            raw_width = svg.getAttribute('width')
+            cleaned_width = ''.join([s for s in raw_width if s in a])
+            width = float(cleaned_width)
+            raw_height = svg.getAttribute('height')
+            cleaned_height = ''.join([s for s in raw_height if s in a])
+            height = float(cleaned_height)
     return width, height
 
 
