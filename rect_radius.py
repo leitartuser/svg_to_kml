@@ -2,7 +2,7 @@ from svg_to_kml import find_svg
 from xml.dom import minidom
 from shapely.geometry import Polygon
 import numpy as np
-
+import os
 
 
 
@@ -32,10 +32,16 @@ import numpy as np
 #         polygon_with_id.append({"id": id_, "geometries": polygon})
 #     return polygon_with_id
 
-#
-# all_svgs = find_svg()
-#
-#
-# for svg in all_svgs:
-#     doc = minidom.parse(f'.{svg}')
-#     rectangles_with_id = get_rectangles(doc)
+
+
+svg_strings = []
+for file in os.listdir(".\\input"):
+    if file.endswith(".svg"):
+        print(os.path.join("\\input", file))
+        svg_strings.append(os.path.join("\\input", file))
+
+
+for svg in svg_strings:
+    doc = minidom.parse(f'.{svg}')
+    for ig, g_1 in enumerate(doc.getElementsByTagName('g')):
+        print(g_1.getAttribute('id'))

@@ -8,6 +8,7 @@ import geopandas as gpd
 from operator import itemgetter
 from kmlfaster import create_kml
 import math
+import xml.etree.ElementTree as ET
 
 
 def find_svg():
@@ -19,32 +20,12 @@ def find_svg():
     return svg_strings
 
 
-# def get_rectangles(svg_doc):
-#     polygon_with_id = []
-#     for irect, rect in enumerate(svg_doc.getElementsByTagName('rect')):
-#         x0 = float(rect.getAttribute('x'))
-#         y0 = float(rect.getAttribute('y'))
-#         id_ = rect.getAttribute('id')
-#         width = float(rect.getAttribute('width'))
-#         height = float(rect.getAttribute('height'))
-#         polygon = Polygon([(x0, y0),
-#                            (x0 + width, y0),
-#                            (x0 + width, y0 + height),
-#                            (x0, y0 + height)
-#                            ])
-#         polygon_with_id.append({"id": id_, "geometries": polygon})
-#     return polygon_with_id
-
-
 def get_rectangles(svg_doc):
     polygon_with_id = []
     for irect, rect in enumerate(svg_doc.getElementsByTagName('rect')):
         x0 = float(rect.getAttribute('x'))
         y0 = float(rect.getAttribute('y'))
         id_ = rect.getAttribute('id')
-        rx = rect.getAttribute('rx')
-        if len(rx) > 0:
-            print("rx")
         width = float(rect.getAttribute('width'))
         height = float(rect.getAttribute('height'))
         polygon = Polygon([(x0, y0),
@@ -56,81 +37,216 @@ def get_rectangles(svg_doc):
     return polygon_with_id
 
 
+# def get_rectangles(svg_doc):
+#     for ig_1, g_1 in enumerate(svg_doc.getElementsByTagName('g')):
+#         g_id_1 = g_1.getAttribute('id')
+#         print("This is g_id_1: " + g_id_1)
+#         for ig_2, g_2 in enumerate(g_1.getElementsByTagName('g')):
+#             g_id_2 = g_2.getAttribute('id')
+#             g_2_transform_matrix = transform_matrix(g_2.getAttribute('transform'))
+#             print("This is g_id_2: " + g_id_2 + " and this is transform_2: " + str(g_2_transform_matrix))
+#             polygon_with_id = []
+#             for irect, rect in enumerate(svg_doc.getElementsByTagName('rect')):
+#                 x0, y0 = float(rect.getAttribute('x')), float(rect.getAttribute('y'))
+#                 id_ = rect.getAttribute('id')
+#                 # rx = rect.getAttribute('rx')
+#                 rtm = transform_matrix(rect.getAttribute('transform'))
+#                 sum_translate_x = g_2_transform_matrix["translate_x"] + rtm["translate_x"]
+#                 sum_translate_y = g_2_transform_matrix["translate_y"] + rtm["translate_y"]
+#                 translated_x0 = x0 + sum_translate_x
+#                 translated_y0 = y0 + sum_translate_y
+#                 width = float(rect.getAttribute('width'))
+#                 height = float(rect.getAttribute('height'))
+#                 polygon = Polygon([(translated_x0, translated_y0),
+#                                    (translated_x0 + width, translated_y0),
+#                                    (translated_x0 + width, translated_y0 + height),
+#                                    (translated_x0, translated_y0 + height)
+#                                    ])
+#                 polygon_with_id.append({"id": id_, "geometries": polygon})
+#             return polygon_with_id
+
+
 def get_circles(svg_doc):
-    a = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ',', '.']
-    polygon_with_id = []
-    stepsize = 0.1
-    for icircle, circle in enumerate(svg_doc.getElementsByTagName('circle')):
-        x0 = float(circle.getAttribute('cx'))
-        y0 = float(circle.getAttribute('cy'))
-        r = float(circle.getAttribute('r'))
-        id_ = circle.getAttribute('id')
-        transform = circle.getAttribute('transform')
-        x_factor = 1
-        y_factor = 1
-        if len(transform) > 0:
-            whitelist_char = set('abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ')
-            method = ''.join(filter(whitelist_char.__contains__, transform))
-            if method == 'scale':
-                whitelist_num = set('0123456789,.-')
-                factors = ''.join(filter(whitelist_num.__contains__, transform))
-                x_factor = float(factors[:factors.find(",")])
-                y_factor = float(factors[factors.find(",") + 1:])
-                # The lower this value the higher quality the circle is with more points generated
-
-                # Generated vertices
+    for ig_1, g_1 in enumerate(svg_doc.getElementsByTagName('g')):
+        g_id_1 = g_1.getAttribute('id')
+        print("This is g_id_1: " + g_id_1)
+        for ig_2, g_2 in enumerate(g_1.getElementsByTagName('g')):
+            g_id_2 = g_2.getAttribute('id')
+            g_2_transform_matrix = transform_matrix(g_2.getAttribute('transform'))
+            print("This is g_id_2: " + g_id_2 + " and this is transform_2: " + str(g_2_transform_matrix))
+            polygon_with_id = []
+            stepsize = 0.1
+            for icircle, circle in enumerate(g_2.getElementsByTagName('circle')):
+                x0, y0 = float(circle.getAttribute('cx')), float(circle.getAttribute('cy'))
+                r = float(circle.getAttribute('r'))
+                id_ = circle.getAttribute('id')
+                ctm = transform_matrix(circle.getAttribute('transform'))
                 positions = []
-
                 t_ = 0
+                sum_translate_x = g_2_transform_matrix["translate_x"] + ctm["translate_x"]
+                sum_translate_y = g_2_transform_matrix["translate_y"] + ctm["translate_y"]
                 while t_ < 2 * math.pi:
-                    positions.append(((r * math.cos(t_) + x0) * x_factor, (r * math.sin(t_) + y0) * y_factor))
+                    positions.append(((r * math.cos(t_) + x0) * ctm["scale_factor_x"] + sum_translate_x,
+                                      (r * math.sin(t_) + y0) * ctm["scale_factor_y"] + sum_translate_y))
                     t_ += stepsize
                 polygon_with_id.append({"id": id_, "geometries": Polygon(positions)})
-            elif method == 'translate':
-                t_ = 0
-                positions = []
-                translate = ''.join([s for s in transform if s in a])
-                print(translate)
-                translate_x, translate_y = float(translate.split(',')[0]), float(translate.split(',')[1])
-                while t_ < 2 * math.pi:
-                    positions.append(((r * math.cos(t_) + x0) + translate_x, (r * math.sin(t_) + y0) + translate_y))
-                    t_ += stepsize
-                polygon_with_id.append({"id": id_, "geometries": Polygon(positions)})
-    return polygon_with_id
+            return polygon_with_id
+
+
+# def get_circles(svg_doc):
+#     a = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ',', '.']
+#     polygon_with_id = []
+#     stepsize = 0.1
+#     for icircle, circle in enumerate(svg_doc.getElementsByTagName('circle')):
+#         x0 = float(circle.getAttribute('cx'))
+#         y0 = float(circle.getAttribute('cy'))
+#         r = float(circle.getAttribute('r'))
+#         id_ = circle.getAttribute('id')
+#         transform = circle.getAttribute('transform')
+#         x_factor = 1
+#         y_factor = 1
+#         if len(transform) > 0:
+#             whitelist_char = set('abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ')
+#             method = ''.join(filter(whitelist_char.__contains__, transform))
+#             if method == 'scale':
+#                 whitelist_num = set('0123456789,.-')
+#                 factors = ''.join(filter(whitelist_num.__contains__, transform))
+#                 x_factor = float(factors[:factors.find(",")])
+#                 y_factor = float(factors[factors.find(",") + 1:])
+#                 # The lower this value the higher quality the circle is with more points generated
+#
+#                 # Generated vertices
+#                 positions = []
+#
+#                 t_ = 0
+#                 while t_ < 2 * math.pi:
+#                     positions.append(((r * math.cos(t_) + x0) * x_factor, (r * math.sin(t_) + y0) * y_factor))
+#                     t_ += stepsize
+#                 polygon_with_id.append({"id": id_, "geometries": Polygon(positions)})
+#             elif method == 'translate':
+#                 t_ = 0
+#                 positions = []
+#                 translate = ''.join([s for s in transform if s in a])
+#                 print(translate)
+#                 translate_x, translate_y = float(translate.split(',')[0]), float(translate.split(',')[1])
+#                 while t_ < 2 * math.pi:
+#                     positions.append(((r * math.cos(t_) + x0) + translate_x, (r * math.sin(t_) + y0) + translate_y))
+#                     t_ += stepsize
+#                 polygon_with_id.append({"id": id_, "geometries": Polygon(positions)})
+#     return polygon_with_id
+
+
+def transform_matrix(transform_string):
+    a = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ',', '.', '-']
+    translate_x = 0
+    translate_y = 0
+    x_factor = 1
+    y_factor = 1
+    if transform_string.startswith("translate"):
+        translate = ''.join([s for s in transform_string if s in a])
+        print(translate)
+        translate_x, translate_y = float(translate.split(',')[0]), float(translate.split(',')[1])
+    if transform_string.startswith("scale"):
+        whitelist_num = set('0123456789,.-')
+        factors = ''.join(filter(whitelist_num.__contains__, transform_string))
+        x_factor = float(factors[:factors.find(",")])
+        y_factor = float(factors[factors.find(",") + 1:])
+    return {"translate_x": translate_x, "translate_y": translate_y,
+            "scale_factor_x": x_factor, "scale_factor_y": y_factor}
 
 
 def get_paths(svg_doc):
-    a = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ',', '.']
     all_paths = []
-    for ipath, path in enumerate(svg_doc.getElementsByTagName('path')):
-        print('Path', ipath)
-        d = path.getAttribute('d')
-        # print('this is d!')
-        # print(d)
-        # print(type(d))
-        id_ = path.getAttribute('id')
-        transform_ = path.getAttribute('transform')
-        translate_x = 0
-        translate_y = 0
-        if transform_.startswith("translate"):
-            translate = ''.join([s for s in transform_ if s in a])
-            print(translate)
-            translate_x, translate_y = float(translate.split(',')[0]), float(translate.split(',')[1])
-        parsed = parse_path(d)
-        print('Objects:\n', parsed, '\n' + '-' * 20)
-        circle_path = []
-        for obj in parsed:
-            bezier_path = Path(obj)
-            num_samples = 10
-            for i in range(num_samples):
-                if i > 0:
-                    bezier = (bezier_path.point(i / (num_samples - 1)))    # needs svgpathtools 1.5.1
-                    if bezier is not None:
-                        circle_path.append(bezier)
-        print("This is circle_path")
-        print(circle_path)
-        all_paths.append({"id": id_, "geometries": circle_path, "translate_x": translate_x, "translate_y": translate_y})
+    print(svg_doc.getElementsByTagName('g'))
+    for ig_1, g_1 in enumerate(svg_doc.getElementsByTagName('g')):
+
+        if g_1.parentNode.nodeName == 'svg':
+            print("parent_information!!")
+            print(g_1.parentNode.nodeName)
+            g_id_1 = g_1.getAttribute('id')
+            print("This is g_id_1: " + g_id_1)
+            g_1_transform_matrix = transform_matrix(g_1.getAttribute('transform'))
+            for ipath, path in enumerate(g_1.getElementsByTagName('path')):
+                id_ = path.getAttribute('id')
+                print('Path', ipath, id_)
+                path_transform_matrix = transform_matrix(path.getAttribute('transform'))
+                print("This is transform matrix: " + str(path_transform_matrix))
+                d = path.getAttribute('d')
+                parsed = parse_path(d)
+                print('Objects:\n', parsed, '\n' + '-' * 20)
+                circle_path = []
+                for obj in parsed:
+                    bezier_path = Path(obj)
+                    num_samples = 10
+                    for i in range(num_samples):
+                        if i > 0:
+                            bezier = (bezier_path.point(i / (num_samples - 1)))  # needs svgpathtools 1.5.1
+                            if bezier is not None:
+                                circle_path.append(bezier)
+                sum_translate_x = g_1_transform_matrix["translate_x"] + path_transform_matrix["translate_x"]
+                sum_translate_y = g_1_transform_matrix["translate_y"] + path_transform_matrix["translate_y"]
+                all_paths.append({"id": id_, "geometries": circle_path,
+                                  "translate_x": sum_translate_x, "translate_y": sum_translate_y})
+        for ig_2, g_2 in enumerate(g_1.getElementsByTagName('g')):
+            if g_2.parentNode.nodeName == 'g' and g_1.parentNode.nodeName == 'svg':
+                g_id_2 = g_2.getAttribute('id')
+                g_2_transform_matrix = transform_matrix( g_2.getAttribute('transform'))
+                print("This is g_id_2: " + g_id_2 + " and this is transform_2: " + str(g_2_transform_matrix))
+                for ipath, path in enumerate(g_2.getElementsByTagName('path')):
+                    id_ = path.getAttribute('id')
+                    print('Path', ipath, id_)
+                    path_transform_matrix = transform_matrix(path.getAttribute('transform'))
+                    print("This is transform matrix: " + str(path_transform_matrix))
+                    d = path.getAttribute('d')
+                    parsed = parse_path(d)
+                    print('Objects:\n', parsed, '\n' + '-' * 20)
+                    circle_path = []
+                    for obj in parsed:
+                        bezier_path = Path(obj)
+                        num_samples = 10
+                        for i in range(num_samples):
+                            if i > 0:
+                                bezier = (bezier_path.point(i / (num_samples - 1)))    # needs svgpathtools 1.5.1
+                                if bezier is not None:
+                                    circle_path.append(bezier)
+                    sum_translate_x = g_1_transform_matrix["translate_x"] + g_2_transform_matrix["translate_x"] + path_transform_matrix["translate_x"]
+                    sum_translate_y = g_1_transform_matrix["translate_y"] + g_2_transform_matrix["translate_y"] + path_transform_matrix["translate_y"]
+                    all_paths.append({"id": id_, "geometries": circle_path,
+                                      "translate_x": sum_translate_x, "translate_y": sum_translate_y})
     return all_paths
+
+
+# def get_paths(svg_doc):
+#     all_paths = []
+#     for ig_1, g_1 in enumerate(svg_doc.getElementsByTagName('g')):
+#         g_id_1 = g_1.getAttribute('id')
+#         print("This is g_id_1: " + g_id_1)
+#         for ig_2, g_2 in enumerate(g_1.getElementsByTagName('g')):
+#             g_id_2 = g_2.getAttribute('id')
+#             g_2_transform_matrix = transform_matrix( g_2.getAttribute('transform'))
+#             print("This is g_id_2: " + g_id_2 + " and this is transform_2: " + str(g_2_transform_matrix))
+#             for ipath, path in enumerate(g_2.getElementsByTagName('path')):
+#                 id_ = path.getAttribute('id')
+#                 print('Path', ipath, id_)
+#                 path_transform_matrix = transform_matrix(path.getAttribute('transform'))
+#                 print("This is transform matrix: " + str(path_transform_matrix))
+#                 d = path.getAttribute('d')
+#                 parsed = parse_path(d)
+#                 print('Objects:\n', parsed, '\n' + '-' * 20)
+#                 circle_path = []
+#                 for obj in parsed:
+#                     bezier_path = Path(obj)
+#                     num_samples = 10
+#                     for i in range(num_samples):
+#                         if i > 0:
+#                             bezier = (bezier_path.point(i / (num_samples - 1)))    # needs svgpathtools 1.5.1
+#                             if bezier is not None:
+#                                 circle_path.append(bezier)
+#                 sum_translate_x = g_2_transform_matrix["translate_x"] + path_transform_matrix["translate_x"]
+#                 sum_translate_y = g_2_transform_matrix["translate_y"] + path_transform_matrix["translate_y"]
+#                 all_paths.append({"id": id_, "geometries": circle_path,
+#                                   "translate_x": sum_translate_x, "translate_y": sum_translate_y})
+#     return all_paths
 
 
 # def attach_paths_to_polygon(whole_path, polygons):
@@ -153,8 +269,6 @@ def get_paths(svg_doc):
 
 def attach_paths_to_polygon(whole_path, polygons):
     # all_geometries = []
-    print("This is whole path!")
-    print(whole_path)
     for each_path in whole_path:
         translate_x = each_path['translate_x']
         translate_y = each_path['translate_y']
