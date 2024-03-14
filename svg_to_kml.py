@@ -324,8 +324,6 @@ def show_coords(polygons, factor):
 
 
 def determine_min(shapes, whole_document):
-    print(whole_document)
-    print(whole_document['rect'])
     min_x = float(whole_document['rect']['@x'])
     min_y = float(whole_document['rect']['@y'])
     max_x = float(whole_document['rect']['@x']) + float(whole_document['rect']['@width'])
@@ -344,7 +342,6 @@ def determine_min(shapes, whole_document):
     #     print(min_x, min_y, max_x, max_y)
     # else:
     #     min_x, min_y, max_x, max_y = 0, 0, 0, 0
-
     return min_x, min_y, max_x, max_y
 
 
@@ -476,7 +473,7 @@ for each in all_svgs:
     dictionary = svg_to_dictionary(each)
     result = main_routine(dictionary, id_variable)
     minx, miny, maxx, maxy = determine_min(result, dictionary)
-    print(minx, miny, maxx, maxy)
     insert_qlik_string = make_new_qlik_script(minx, miny, maxx, maxy, output_file_name)
     print(insert_qlik_string)
+
 
