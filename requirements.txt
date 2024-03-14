@@ -41,3 +41,7 @@ svgutils==0.3.4
 svgwrite==1.4.3
 urllib3==1.26.14
 zipp==3.11.0
+
+fastkml~=0.12
+xmltodict~=0.13.0
+Fiona~=1.8.22

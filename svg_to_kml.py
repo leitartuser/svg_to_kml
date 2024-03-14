@@ -1,11 +1,9 @@
 import os
-from xml.dom import minidom
 from svg.path import parse_path
 import matplotlib.pyplot as plt
 from shapely.geometry import Polygon
 from svgpathtools import Path
 import geopandas as gpd
-from operator import itemgetter
 from kmlfaster import create_kml
 import math
 import xmltodict
@@ -19,7 +17,7 @@ if len(sys.argv) > 1:
     else:
         id_variable = '@inkscape:label'
 else:
-    id_variable = '@id' # default value
+    id_variable = '@id'   # default value
 
 print(id_variable)
 
@@ -95,7 +93,7 @@ def get_rectangles(rectangles, grp1_tf_matrix, id_var):
             # upper right corner (after switching the coordinate system)
             for x in steps_rc[::-1]:
                 if rx ** 2 - (x - (x0 + width - rx)) ** 2 > 0:
-                    y_minus = y0 + ry - (ry / rx) * math.sqrt(rx ** 2 - (x - (x0 + width - rx)) ** 2)  + sum_y
+                    y_minus = y0 + ry - (ry / rx) * math.sqrt(rx ** 2 - (x - (x0 + width - rx)) ** 2) + sum_y
                     rectangle_point_seq.append((x + sum_x, y_minus))
             polygon = Polygon(rectangle_point_seq)
         else:
@@ -190,7 +188,7 @@ def get_ellipses(ellipses, grp1_tf_matrix, id_var):
     for ellipse in ellipses:
         single_ellipse = []
         x0, y0, rx, ry = float(ellipse['@cx']), float(ellipse['@cy']), float(ellipse['@rx']), float(ellipse['@ry'])
-        id_ = ellipse['@id']
+        id_ = ellipse[id_var]
         print("This is id_: " + str(id_))
         if 'transform' in ellipse.keys():
             etm = transform_matrix(ellipse['@transform'])
@@ -475,5 +473,3 @@ for each in all_svgs:
     minx, miny, maxx, maxy = determine_min(result, dictionary)
     insert_qlik_string = make_new_qlik_script(minx, miny, maxx, maxy, output_file_name)
     print(insert_qlik_string)
-
-
