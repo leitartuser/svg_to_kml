@@ -9,6 +9,17 @@ from operator import itemgetter
 from kmlfaster import create_kml
 import math
 import xmltodict
+import sys
+
+
+if len(sys.argv) > 1:
+    batch_argument = sys.argv[1]
+    if batch_argument == 1:
+        id_variable = '@id'
+    else:
+        id_variable = '@inkscape:label'
+else:
+    id_variable = '@id'
 
 
 def find_svg():
@@ -26,20 +37,129 @@ def svg_to_dictionary(svg_string):
     return data_dict['svg']
 
 
-def get_rectangles(rectangles, matrize):
+# def get_rectangles(rectangles, matrize):
+#     polygon_with_id = []
+#     for irect, rect in enumerate(rectangles.getElementsByTagName('rect')):
+#         x0 = float(rect.getAttribute('x'))
+#         y0 = float(rect.getAttribute('y'))
+#         id_ = rect.getAttribute('id')
+#         width = float(rect.getAttribute('width'))
+#         height = float(rect.getAttribute('height'))
+#         polygon = Polygon([(x0, y0),
+#                            (x0 + width, y0),
+#                            (x0 + width, y0 + height),
+#                            (x0, y0 + height)
+#                            ])
+#         polygon_with_id.append({"id": id_, "geometries": polygon})
+#     return polygon_with_id
+
+def create_steps(start, stop):
+    number_of_steps = 25
+    i = 0
+    step = (stop - start) / number_of_steps
+    steps = []
+    while i < number_of_steps + 1:
+        x_value = start + (step * i)
+        steps.append(x_value)
+        i += 1
+    return steps
+
+
+def get_rectangles(rectangles, grp1_tf_matrix):
+    g_1_translate_x, g_1_translate_y = grp1_tf_matrix['translate_x'], grp1_tf_matrix['translate_y']
+    rtm = {"translate_x": 0, "translate_y": 0, "scale_factor_x": 1, "scale_factor_y": 1}
     polygon_with_id = []
-    for irect, rect in enumerate(rectangles.getElementsByTagName('rect')):
-        x0 = float(rect.getAttribute('x'))
-        y0 = float(rect.getAttribute('y'))
-        id_ = rect.getAttribute('id')
-        width = float(rect.getAttribute('width'))
-        height = float(rect.getAttribute('height'))
-        polygon = Polygon([(x0, y0),
-                           (x0 + width, y0),
-                           (x0 + width, y0 + height),
-                           (x0, y0 + height)
-                           ])
+    if isinstance(rectangles, dict):
+        rectangle_point_seq = []
+        print("This is rectangles: ")
+        print(rectangles)
+        x0 = float(rectangles['@x'])
+        y0 = float(rectangles['@y'])
+        id_ = rectangles['@id']
+        width = float(rectangles['@width'])
+        height = float(rectangles['@height'])
+        sum_y = g_1_translate_y
+        sum_x = g_1_translate_x
+        if '@rx' in rectangles.keys():
+            rx = float(rectangles['@rx'])
+            ry = float(rectangles['@ry'])
+            # upper left corner (after switching the coordinate system)
+            start, stop = x0, x0 + rx
+            steps_lc = create_steps(start, stop)
+            for x in steps_lc[::-1]:
+                if rx ** 2 - (x - (x0 + rx)) ** 2 > 0:
+                    y_minus = y0 + ry - (ry / rx) * math.sqrt(rx ** 2 - (x - (x0 + rx)) ** 2) + sum_y
+                    rectangle_point_seq.append((x + sum_x, y_minus))
+            # lower left corner (after switching the coordinate system)
+            for x in steps_lc:
+                if rx ** 2 - (x - (x0 + rx)) ** 2 > 0:
+                    y_plus = y0 + height - ry + (ry / rx) * math.sqrt(rx ** 2 - (x - (x0 + rx)) ** 2) + sum_y
+                    rectangle_point_seq.append((x + sum_x, y_plus))
+            # lower right corner (after switching the coordinate system)
+            start, stop = x0 + width - rx, x0 + width
+            steps_rc = create_steps(start, stop)
+            for x in steps_rc:
+                if rx ** 2 - (x - (x0 + width - rx)) ** 2 > 0:
+                    y_plus = y0 + height - ry + (ry / rx) * math.sqrt(rx ** 2 - (x - (x0 + width - rx)) ** 2) + sum_y
+                    rectangle_point_seq.append((x + sum_x, y_plus))
+            # upper right corner (after switching the coordinate system)
+            for x in steps_rc[::-1]:
+                if rx ** 2 - (x - (x0 + width - rx)) ** 2 > 0:
+                    y_minus = y0 + ry - (ry / rx) * math.sqrt(rx ** 2 - (x - (x0 + width - rx)) ** 2)  + sum_y
+                    rectangle_point_seq.append((x + sum_x, y_minus))
+            polygon = Polygon(rectangle_point_seq)
+        else:
+            polygon = Polygon([(x0, y0),
+                               (x0 + width, y0),
+                               (x0 + width, y0 + height),
+                               (x0, y0 + height)
+                               ])
         polygon_with_id.append({"id": id_, "geometries": polygon})
+    if isinstance(rectangles, list):
+        for irect, rect in enumerate(rectangles):
+            rectangle_point_seq = []
+            x0 = float(rect['@x'])
+            y0 = float(rect['@y'])
+            id_ = rect['@id']
+            width = float(rect['@width'])
+            height = float(rect['@height'])
+            sum_y = g_1_translate_y
+            sum_x = g_1_translate_x
+            if '@rx' in rect.keys():
+                rx = float(rect["@rx"])
+                ry = float(rect["@ry"])
+                # upper left corner (after switching the coordinate system)
+                start, stop = x0, x0 + rx
+                steps_lc = create_steps(start, stop)
+                for x in steps_lc[::-1]:
+                    if rx ** 2 - (x - (x0 + rx)) ** 2 > 0:
+                        y_minus = y0 + ry - (ry / rx) * math.sqrt(rx ** 2 - (x - (x0 + rx)) ** 2) + sum_y
+                        rectangle_point_seq.append((x + sum_x, y_minus))
+                # lower left corner (after switching the coordinate system)
+                for x in steps_lc:
+                    if rx ** 2 - (x - (x0 + rx)) ** 2 > 0:
+                        y_plus = y0 + height - ry + (ry / rx) * math.sqrt(rx ** 2 - (x - (x0 + rx)) ** 2) + sum_y
+                        rectangle_point_seq.append((x + sum_x, y_plus))
+                # lower right corner (after switching the coordinate system)
+                start, stop = x0 + width - rx, x0 + width
+                steps_rc = create_steps(start, stop)
+                for x in steps_rc:
+                    if rx ** 2 - (x - (x0 + width - rx)) ** 2 > 0:
+                        y_plus = y0 + height - ry + (ry / rx) * math.sqrt(rx ** 2 - (x - (x0 + width - rx)) ** 2) + sum_y
+                        rectangle_point_seq.append((x + sum_x, y_plus))
+                # upper right corner (after switching the coordinate system)
+                for x in steps_rc[::-1]:
+                    if rx ** 2 - (x - (x0 + width - rx)) ** 2 > 0:
+                        y_minus = y0 + ry - (ry / rx) * math.sqrt(rx ** 2 - (x - (x0 + width - rx)) ** 2) + sum_y
+                        rectangle_point_seq.append((x + sum_x, y_minus))
+                polygon = Polygon(rectangle_point_seq)
+            else:
+                polygon = Polygon([(x0, y0),
+                                   (x0 + width, y0),
+                                   (x0 + width, y0 + height),
+                                   (x0, y0 + height)
+                                   ])
+            polygon_with_id.append({"id": id_, "geometries": polygon})
     return polygon_with_id
 
 
@@ -73,49 +193,51 @@ def construct_circles(id_, x0, y0, r, tf_matrix, circle_transform_matrix):
     return {"id": id_, "geometries": Polygon(positions)}
 
 
-def main_routine(svg_geometery):
-    paths, circles, rectangles = [], [], []
-    for g_1 in svg_geometery['g']:
-        g_1_transform_matrix = {"translate_x": 0, "translate_y": 0, "scale_factor_x": 1, "scale_factor_y": 1}
-        if 'g' in g_1.keys():
-            g_2 = g_1['g']
-            for element in g_2:
-                g_2_transform_matrix = {"translate_x": 0, "translate_y": 0, "scale_factor_x": 1, "scale_factor_y": 1}
-                keys_of_element = element.keys()
-                if '@transform' in keys_of_element:
-                    g_2_transform_matrix = transform_matrix(element['@transform'])
-                if 'path' in keys_of_element:
-                    path_ = get_paths(element['path'], g_2_transform_matrix)
-                    paths.append(path_)
-                if 'circle' in keys_of_element:
-                    circle_ = get_circles(element['circle'], g_2_transform_matrix)
-                    circles.append(circle_)
-                if 'rect' in keys_of_element:
-                    rect_ = get_rectangles(element['rect'], g_2_transform_matrix)
-                    rectangles.append(rect_)
-        else:
-            keys_of_g_1 = g_1.keys()
-            if '@transform' in g_1.keys():
-                g_1_transform_matrix = transform_matrix(g_1['@transform'])
-            if 'path' in keys_of_g_1:
-                path_ = get_paths(g_1['path'], g_1_transform_matrix)
-                paths.append(path_)
-            if 'circle' in keys_of_g_1:
-                circle_ = get_circles(g_1['circle'], g_1_transform_matrix)
-                circles.append(circle_)
-            if 'rect' in keys_of_g_1:
-                rect_ = get_rectangles(g_1['rect'], g_1_transform_matrix)
-                rectangles.append(rect_)
-            
-        merged_polygons = merge_polygons(circles, paths)
-        resized_polygons = resize_polygons(merged_polygons)
-        # min_x, min_y, max_x, max_y = determine_min(resized_polygons)
-        # gdf = build_geo_dataframe(resized_polygons)
-        # print(merged_polygons)
-        # print(gdf)
-        kml, kml_string = create_kml(resized_polygons)
-        with open(f'./output/{output_file_name}.kml', 'w') as f:
-            f.write(kml_string)
+def get_ellipses(ellipses, grp1_tf_matrix):
+    g_1_translate_x, g_1_translate_y = grp1_tf_matrix['translate_x'], grp1_tf_matrix['translate_y']
+    ellipses_with_id = []
+    etm = {"translate_x": 0, "translate_y": 0, "scale_factor_x": 1, "scale_factor_y": 1}
+    for ellipse in ellipses:
+        single_ellipse = []
+        x0, y0, rx, ry = float(ellipse['@cx']), float(ellipse['@cy']), float(ellipse['@rx']), float(ellipse['@ry'])
+        id_ = ellipse['@id']
+        print("This is id_: " + str(id_))
+        if 'transform' in ellipse.keys():
+            etm = transform_matrix(ellipse['@transform'])
+        start, stop = x0 - rx, x0 + rx
+        number_of_steps = 25
+        step = (stop - start)/number_of_steps
+        steps_positiv = []
+        i = 0
+        # sum up translation
+        sum_x = etm['translate_x'] + g_1_translate_x
+        sum_y = etm['translate_y'] + g_1_translate_y
+        while i < number_of_steps + 1:
+            x_value = start + (step * i)
+            steps_positiv.append(x_value)
+            i += 1
+        for each_step in steps_positiv:     # for the positive y-values (remember all coordinates have to be
+            x = each_step + sum_x      # written in clockwise fashion)
+            if rx**2 - (each_step - x0)**2 > 0:
+                y_plus = y0 + (ry/rx) * math.sqrt(rx**2 - (each_step - x0)**2) + sum_y
+                single_ellipse.append((x, y_plus))
+            elif (rx**2 - (each_step - x0)**2) > -0.05:          # when the content of sqrt is negative
+                y_plus = y0 + sum_y
+                single_ellipse.append((x, y_plus))
+        steps_negativ = steps_positiv[::-1]                     # Array in reversed sequence
+        for each_step in steps_negativ:     # for the negative y-values
+            x = each_step + sum_x
+            if rx**2 - (each_step - x0)**2 > 0:
+                y_minus = y0 - (ry/rx) * math.sqrt(rx**2 - (each_step - x0)**2) + sum_y
+                single_ellipse.append((x, y_minus))
+            elif (rx**2 - (each_step - x0)**2) > -0.05:          # when the content of sqrt is negative
+                y_plus = y0 + sum_y
+                single_ellipse.append((x, y_plus))
+        ellipses_with_id.append({"id": id_, "geometries": Polygon(single_ellipse)})
+    return ellipses_with_id
+
+
+
 
 
 def transform_matrix(transform_string):
@@ -136,21 +258,25 @@ def transform_matrix(transform_string):
             "scale_factor_x": x_factor, "scale_factor_y": y_factor}
 
 
-def merge_polygons(circles, paths):
+def merge_polygons(circles, ellipses, paths, rectangles):
     polygons = []
     for circle in circles:
         polygons.append(circle)
-    for path in paths:
-        for every in path:
-            polygons.append(every)
+    for every in paths:
+        for path in every:
+            polygons.append(path)
+    for every in ellipses:
+        for ellipse in every:
+            polygons.append(ellipse)
+    for every in rectangles:
+        for rectangle in every:
+            polygons.append(rectangle)
     return polygons
 
 
 def build_geo_dataframe(list_of_geometries):
     polygons_geometries = []
     for each in list_of_geometries:
-        # print("each geometry")
-        # print(each['geometries'])
         polygons_geometries.append(each['geometries'])
     panda = gpd.GeoDataFrame(columns=['id', 'meta_x', 'meta_y'], geometry=[*polygons_geometries])
     panda.to_file(f'.\\output{output_file_name}.kml', driver='LIBKML')
@@ -158,7 +284,7 @@ def build_geo_dataframe(list_of_geometries):
     return panda
 
 
-def get_paths(path_list, tf_matrix):
+def get_paths(path_list, tf_matrix, id_var):
     g_2_translate_x, g_2_translate_y = tf_matrix['translate_x'], tf_matrix['translate_y']
     full_path = []
     polygons = []
@@ -168,10 +294,7 @@ def get_paths(path_list, tf_matrix):
         d = path['@d']
         if '@transform' in path.keys():
             ptm = transform_matrix(path['@transform'])
-        id_ = path['@id']
-        if id_ == 'L3-DS-5-IN-A-Rect':
-            print('L3-DS-5-IN-A-Rect!!!!')
-            print('This is ptm:' + str(ptm))
+        id_ = path[id_var]
         parsed = parse_path(d)
         print('Objects:\n', parsed, '\n' + '-' * 20)
         arc_path = []
@@ -369,6 +492,50 @@ Let {file_name}_Rechts_Laenge = {round(max_x, 5)};
     return script_string
 
 
+def main_routine(svg_geometery, id_):
+    paths, circles, ellipses, rectangles = [], [], [], []
+    for g_1 in svg_geometery['g']:
+        g_1_transform_matrix = {"translate_x": 0, "translate_y": 0, "scale_factor_x": 1, "scale_factor_y": 1}
+        if 'g' in g_1.keys():
+            g_2 = g_1['g']
+            for element in g_2:
+                g_2_transform_matrix = {"translate_x": 0, "translate_y": 0, "scale_factor_x": 1, "scale_factor_y": 1}
+                keys_of_element = element.keys()
+                if '@transform' in keys_of_element:
+                    g_2_transform_matrix = transform_matrix(element['@transform'])
+                if 'path' in keys_of_element:
+                    path_ = get_paths(element['path'], g_2_transform_matrix, id_)
+                    paths.append(path_)
+                if 'circle' in keys_of_element:
+                    circle_ = get_circles(element['circle'], g_2_transform_matrix)
+                    circles.append(circle_)
+                if 'rect' in keys_of_element:
+                    rect_ = get_rectangles(element['rect'], g_2_transform_matrix)
+                    rectangles.append(rect_)
+        else:
+            keys_of_g_1 = g_1.keys()
+            if '@transform' in g_1.keys():
+                g_1_transform_matrix = transform_matrix(g_1['@transform'])
+            if 'path' in keys_of_g_1:
+                path_ = get_paths(g_1['path'], g_1_transform_matrix, id_)
+                paths.append(path_)
+            if 'circle' in keys_of_g_1:
+                circle_ = get_circles(g_1['circle'], g_1_transform_matrix)
+                circles.append(circle_)
+            if 'rect' in keys_of_g_1:
+                rect_ = get_rectangles(g_1['rect'], g_1_transform_matrix)
+                rectangles.append(rect_)
+            if 'ellipse' in keys_of_g_1:
+                ellip_ = get_ellipses(g_1['ellipse'], g_1_transform_matrix)
+                ellipses.append(ellip_)
+        merged_polygons = merge_polygons(circles, ellipses, paths, rectangles)
+        resized_polygons = resize_polygons(merged_polygons)
+        kml, kml_string = create_kml(resized_polygons)
+        with open(f'./output/{output_file_name}.kml', 'w') as f:
+            f.write(kml_string)
+    show_coords(resized_polygons, 1)
+
+
 """define factor"""
 devision_factor = 1
 
@@ -385,15 +552,8 @@ insert_string = []
 for each in all_svgs:
     output_file_name = each[7:len(each) - 4]
     dictionary = svg_to_dictionary(each)
-    result = main_routine(dictionary)
-    # doc = minidom.parse(f'.{each}')
-    # rectangles_with_id = get_rectangles(doc)
-    # circles_with_id = get_circles(doc)
-    # paths_with_id = get_paths(doc)
-    # pixels_width, pixels_height = get_pixels(doc)
-    # doc.unlink()
-    # polygon1 = attach_paths_to_polygon(paths_with_id, rectangles_with_id)
-    # polygon2 = attach_circles_to_polygon(circles_with_id, polygon1)
+    result = main_routine(dictionary, id_variable)
+
     # print(newer_poly)
     # resized_poly = resize_polygons(polygon2, devision_factor)
     # minx, miny, maxx, maxy = determine_min(resized_poly)
